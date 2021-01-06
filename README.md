@@ -1,16 +1,12 @@
-# AML-LargeVae
-AML Large VAE group project
+# AML-LargeVae TODO:
 
-TODO:
+# Report
 
--- Report
+# VampPrior 
 
--- VampPrior 
+# MoG
 
--- MoG
-
--- Experiments
-
+# Experiments
 
 0. experiment with slightly different NN architecture
 1. experiment with different number of latent variable s
