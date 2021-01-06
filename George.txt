@@ -5,20 +5,16 @@
         # initializing the likelihood for all test data to find the max
         numOfData = testData.shape[0]
         likelihood_test = np.zeros(numOfData)
-
-        if (numOfSamples <= MiniBatchSize):
-            ratio = 1
-        else:
-            ratio = numOfSamples / MiniBatchSize
-            numOfSamples = MiniBatchSize
-
+        ratio = max(1, numOfSamples/MiniBatchSize)
+        dim = min(numOfSamples, MiniBatchSize)
+        
         for datapoint in range(0, numOfData):
             if (datapoint % 100 == 0): print('{:.2f}%'.format(100 * datapoint / (float(numOfData))))
             chi_star = testData[datapoint].unsqueeze(0)
 
             losses = []
             for _ in range(0, int(ratio)):
-                chi_zero = chi_star.expand(numOfSamples, chi_star.size(1))
+                chi_zero = chi_star.expand(dim, chi_star.size(1))
                 loss, _, _ = self.calculate_loss(chi_zero)
                 losses.append(-loss.cpu().data.numpy())
             
