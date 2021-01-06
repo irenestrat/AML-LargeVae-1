@@ -4,7 +4,9 @@ AML Large VAE group project
 TODO:
 
 -- Report
+
 -- VampPrior 
+
 -- MoG
 
 -- Experiments
