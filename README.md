@@ -8,6 +8,8 @@ TODO:
 -- MoG
 
 -- Experiments
+
+
 0. experiment with slightly different NN architecture
 1. experiment with different number of latent variable 
 2. experiment with no KL loss
