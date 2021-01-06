@@ -1,13 +1,12 @@
 # ---------------------------- MY PIECE OF CRAP ---------------------------------
     def calculate_likelihood_George(self, testData, directory, mode="test", numOfSamples=5000, MiniBatchSize=100):
 
-        # LOGSUMEXP TRICK
         # initializing the likelihood for all test data to find the max
         numOfData = testData.shape[0]
         likelihood_test = np.zeros(numOfData)
         ratio = max(1, numOfSamples/MiniBatchSize)
         dim = min(numOfSamples, MiniBatchSize)
-        
+
         for datapoint in range(0, numOfData):
             if (datapoint % 100 == 0): print('{:.2f}%'.format(100 * datapoint / (float(numOfData))))
             chi_star = testData[datapoint].unsqueeze(0)
@@ -22,7 +21,14 @@
             redim = losses.shape[0] * losses.shape[1]
             losses = np.reshape(losses, (redim, 1))
 
-            likelihood_test[datapoint] = logsumexp(losses) - np.log(redim)
+            # LOGSUMEXP TRICK
+            logsumexp = 0
+            losses = losses.ravel()
+            loss_max = losses.max(axis=0)
+            logsumexp = np.log(sum(np.exp(losses - loss_max)))
+            logsumexp += loss_max
+
+            likelihood_test[datapoint] = logsumexp - np.log(redim)
 
         plot_histogram(-likelihood_test, directory, mode)
 
