@@ -4,11 +4,12 @@ import torch
 import numpy as np
 from torch.optim import Optimizer
 import math
-
+import os
+import gzip
 
 class AdamNormGrad(Optimizer):
-
-    ##  A variation of classical Adam optimizer that normalizes the gradients // Code stolen from jmtomczak
+    # author: Tomczak (stolen)
+    #  A variation of classical Adam optimizer that normalizes the gradients // Code stolen from jmtomczak
     """Implements Adam algorithm.
 
     It has been proposed in `Adam: A Method for Stochastic Optimization`_.
@@ -88,10 +89,12 @@ class AdamNormGrad(Optimizer):
 
 
 def he_init(m):
-    s =  np.sqrt( 2. / m.in_features )
+    # author: Tomczak (stolen)
+    s = np.sqrt(2. / m.in_features)
     m.weight.data.normal_(0, s)
 
 def set_seeds(seed):
+    # author: Ioannis
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
@@ -100,12 +103,37 @@ def set_seeds(seed):
     return
 
 def load_dataset(path):
+    # author: Ioannis
 
     if path.split("/")[1] == "Freyfaces":
         with open(path, 'rb') as f:
             data = pickle.load(f, encoding='latin1')[0]
 
-        ## data normalization [half pixel trick]
+        ## data normalization [half pixel trick] similarly to the paper implementation
         data = (data + 0.5)/256
+        output_shape = np.asarray([28, 20])
 
-    return data
+    elif path.split("/")[1] == "MNIST":
+
+        data = []
+        for file in os.listdir(path):
+            with gzip.open(path+file, "r") as f:
+                # first 4 bytes is a magic number
+                magic_number = int.from_bytes(f.read(4), "big")
+                # second 4 bytes is the number of images
+                image_count = int.from_bytes(f.read(4), "big")
+                # third 4 bytes is the row count
+                row_count = int.from_bytes(f.read(4), "big")
+                # fourth 4 bytes is the column count
+                column_count = int.from_bytes(f.read(4), "big")
+                # rest is the image pixel data, each pixel is stored as an unsigned byte
+                # pixel values are 0 to 255
+                image_data = f.read()
+                image_data = np.frombuffer(image_data, dtype=np.uint8).reshape((image_count, row_count, column_count))
+                data.append(image_data)
+        data = np.concatenate([data[0], data[1]])
+
+        data = data.reshape(data.shape[0], data.shape[1] * data.shape[2]) / 255
+        output_shape = np.asarray([28, 28])
+
+    return data, output_shape, path.split("/")[1]
