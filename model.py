@@ -5,25 +5,47 @@ import numpy as np
 import matplotlib.pyplot as plt
 from utils import he_init
 
+from torch.autograd import Variable
+
+## Non-linear layers
+# Slightly modified code from the VampPrior Github; always using an activation function for the layers.
+# Also refer to: https://github.com/jmtomczak/vae_vampprior/blob/master/utils/nn.py
+class NonLinearSimplified(nn.Module):
+    def __init__(self, input_size, output_size, activation, bias=True):
+        super(NonLinearSimplified, self).__init__()
+        self.activation = activation
+        self.linear = nn.Linear(int(input_size), int(output_size), bias=bias)
+
+    def forward(self, x):
+        return self.activation( self.linear(x) )
+
+
 class VAE(nn.Module):
 
-    def __init__(self, use_gpu, model_path, data_shape, latent_length, dataset_name):
+    def __init__(self, use_gpu, model_path, data_shape, latent_length, dataset_name, model_name, num_of_pseudoinputs, output_shape, use_training_data_init, mean_pseudoinputs, var_pseudoinputs):
         # author: Irene-Georgios-Ioannis Pair-Programming
 
         super(VAE, self).__init__()
 
-
-        ## output_shape=
         self.data_shape = data_shape
         self.dataset_name = dataset_name
         self.latent_length = latent_length
         self.model_path = model_path
+        self.model_name = model_name
+        self.num_of_pseudoinputs = num_of_pseudoinputs
+        self.image_size = output_shape
+        self.use_training_data_init = use_training_data_init
+        self.mean_pseudoinputs = mean_pseudoinputs
+        self.var_pseudoinputs = var_pseudoinputs
         self.use_gpu = use_gpu
+
         ## encoder
         self.sigmoid = nn.Sigmoid()
+
         ## Gated_0 layer
         self.encoder_h_0 = nn.Linear(np.prod(data_shape), 300)
         self.encoder_gate_0 = nn.Linear(np.prod(data_shape), 300)
+
         ## Gated_1 layer
         self.encoder_h_1 = nn.Linear(300, 300)
         self.encoder_gate_1 = nn.Linear(300, 300)
@@ -36,6 +58,7 @@ class VAE(nn.Module):
         ## Gated_0 layer
         self.decoder_h_0 = nn.Linear(latent_length, 300)
         self.decoder_gate_0 = nn.Linear(latent_length, 300)
+
         ## Gated_1 layer
         self.decoder_h_1 = nn.Linear(300, 300)
         self.decoder_gate_1 = nn.Linear(300, 300)
@@ -48,6 +71,9 @@ class VAE(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 he_init(m)
+        
+        if(self.model_name == "VampPrior"):
+            self.create_pseudoinputs()
 
     def encoder(self, x):
         # author: Irene-Georgios-Ioannis Pair-Programming
@@ -88,7 +114,7 @@ class VAE(nn.Module):
 
         ## output-distributions
         output_mean = self.decoder_output_mean(x)
-        output_mean = self.sigmoid(output_mean) ## 0-1 scale (why not softmax)??
+        output_mean = self.sigmoid(output_mean) ## 0-1 scale
 
         ## clamping for FreyFaces ##
         if self.dataset_name == "Freyfaces":
@@ -115,7 +141,10 @@ class VAE(nn.Module):
             eps = torch.normal(0, 1, size=std.size()).cuda()
         else:
             eps = torch.normal(0, 1, size=std.size())
-        z_prior = eps * std + latent_mean  ## reparameterization trick
+
+        ## reparameterization trick
+        # We followed the intuition described in this blog post: https://towardsdatascience.com/understanding-variational-autoencoders-vaes-f70510919f73
+        z_prior = eps * std + latent_mean 
 
 
         ## decoding
@@ -272,7 +301,7 @@ class VAE(nn.Module):
             ## upper pixel of generated output
             if self.dataset_name == 'Freyfaces':
                 data_batch = torch.floor(data_batch * 256) / 256
-                ## applying the logistic distributions ###as explained in https://medium.com/@smallfishbigsea/an-explanation-of-discretized-logistic-mixture-likelihood-bdfe531751f0
+                ## applying the logistic distributions###as explained in https://medium.com/@smallfishbigsea/an-explanation-of-discretized-logistic-mixture-likelihood-bdfe531751f0
                 var = torch.exp(output_sigma)  ## extracting variance
                 logistic_CDF_left = 1 / (1 + torch.exp(- (data_batch - output_mean) / var))
                 logistic_CDF_right = 1 / (1 + torch.exp(- (data_batch - output_mean + 1 / 256) / var))
@@ -341,15 +370,62 @@ class VAE(nn.Module):
 
         return loss_all, R_loss_all, KL_loss_all
     
-    def create_pseudoinputs(self, num_of_pseudoinputs=500):
-        nonlinearity = nn.Hardtanh(min_val=0.0)
+    def create_pseudoinputs(self):
+        # Author: Irene-Georgios Pair-Programming
 
-        means = NonLinear(num_of_pseudoinputs, np.prod(self.args.input_size), bias=False, activation=nonlinearity)
+        # Computing a trainable non-linear layer for the pseudoinputs.
+        # image_size stands for the data dimensions, i.e. [28, 20] for FrayFaces, [28, 28] for d-MNIST
+        self.means = NonLinearSimplified(self.num_of_pseudoinputs, np.prod(self.image_size), bias=False, activation=nn.Hardtanh(min_val=0.0))
+
+        # init pseudo-inputs
+        if self.use_training_data_init:
+            self.means.linear.weight.data = self.mean_pseudoinputs
+        else:
+            self.means.linear.weight.data.normal_(self.mean_pseudoinputs, np.sqrt(self.var_pseudoinputs))
+
+        # create an idle input for calling pseudo-inputs
+        self.idle_input = Variable(torch.eye(self.num_of_pseudoinputs, self.num_of_pseudoinputs), requires_grad=False)
+        if self.use_gpu:
+            self.idle_input = self.idle_input.cuda()
+
+    def calculate_KL_loss(self, chi_zero):
+        ##############################################################
+        # author: Ioannis
+        output_mean, output_sigma, z_prior, latent_mean, latent_sigma = self.forward(chi_zero)
+        ### computing ELBO-loss
+        ## KL divergence
+        log_z_prior = torch.sum(-0.5 * torch.pow(z_prior, 2),1)  ## loglikelihood of z_prior being generated by (0,1) Normal Distribution ## summing over the
+        log_q_z = torch.sum(-0.5 * (latent_sigma + torch.pow(z_prior - latent_mean, 2) / torch.exp(latent_sigma)),1)  ## loglikelihood of z_prior being generated by
+        ## predicted Normal Distributions
+        KL_loss = - (log_z_prior - log_q_z)  ## KL(q||p)=Sum_over( q(z)*log[q(z)/p(z)])
+
+        return KL_loss, output_mean, output_sigma, z_prior, latent_mean, latent_sigma
+
+    def calculate_RE_loss(self, name, chi_zero, output_sigma, output_mean):
+        # Author: Ioannis
+        ### computing reconstruction loss
+        ## Considering a discrete logistic distribution for FrayFace dataset (similarly to the paper)
+        ## upper pixel of generated output
+        if self.dataset_name == 'Freyfaces':
+            chi_zero = torch.floor(chi_zero * 256) / 256
+            ## applying the logistic distributions ###as explained in https://medium.com/@smallfishbigsea/an-explanation-of-discretized-logistic-mixture-likelihood-bdfe531751f0
+            var = torch.exp(output_sigma)  ## extracting variance
+            logistic_CDF_left = 1 / (1 + torch.exp(- (chi_zero - output_mean) / var))
+            logistic_CDF_right = 1 / (1 + torch.exp(- (chi_zero - output_mean + 1 / 256) / var))
+
+            R_loss = - torch.sum(torch.log(logistic_CDF_right - logistic_CDF_left + 1e-7), dim=1)
+
+        elif self.dataset_name == 'MNIST':
+            # author: Irene-Georgios-Ioannis Pair-Programming
+            output_mean = torch.clamp(output_mean, min=1e-5, max=1 - 1e-5)
+            log_bernoulli = data_batch * torch.log(output_mean) + (1 - data_batch) * torch.log(1 - output_mean)
+            R_loss = - torch.sum(log_bernoulli, dim=1)
+
+        return R_loss
 
     def calculate_likelihood(self, test_loader, numOfSamples=5000, MiniBatchSize=100, KL_coef=1):
         # Calculating the likelidood in test time.
-        # Parts of this function were filled in by Ioannis to associate this code part with his function val_model.
-        # Primary author: Georgios
+        # Author: Georgios
         # ---------------------------------------------
         self.eval()
 
@@ -373,43 +449,15 @@ class VAE(nn.Module):
             for _ in range(0, int(ratio)):
                 chi_zero = chi_star.expand(dim, chi_star.size(1))
 
-                ##############################################################
-                # author: Ioannis
-                output_mean, output_sigma, z_prior, latent_mean, latent_sigma = self.forward(chi_zero)
-                ### computing ELBO-loss
-                ## KL divergence
-                log_z_prior = torch.sum(-0.5 * torch.pow(z_prior, 2),1)  ## loglikelihood of z_prior being generated by (0,1) Normal Distribution ## summing over the
-                log_q_z = torch.sum(-0.5 * (latent_sigma + torch.pow(z_prior - latent_mean, 2) / torch.exp(latent_sigma)),1)  ## loglikelihood of z_prior being generated by
-                ## predicted Normal Distributions
-                KL_loss = - (log_z_prior - log_q_z)  ## KL(q||p)=Sum_over( q(z)*log[q(z)/p(z)])
-                ### computing reconstruction loss
-                ## Considering a discrete logistic distribution for FrayFace dataset (similarly to the paper)
-                ## upper pixel of generated output
-                if self.dataset_name == 'Freyfaces':
-                    chi_zero = torch.floor(chi_zero * 256) / 256
-                    ## applying the logistic distributions ###as explained in https://medium.com/@smallfishbigsea/an-explanation-of-discretized-logistic-mixture-likelihood-bdfe531751f0
-                    var = torch.exp(output_sigma)  ## extracting variance
-                    logistic_CDF_left = 1 / (1 + torch.exp(- (chi_zero - output_mean) / var))
-                    logistic_CDF_right = 1 / (1 + torch.exp(- (chi_zero - output_mean + 1 / 256) / var))
-
-                    R_loss = - torch.sum(torch.log(logistic_CDF_right - logistic_CDF_left + 1e-7), dim=1)
-
-                elif self.dataset_name == 'MNIST':
-                    # author: Irene-Georgios-Ioannis Pair-Programming
-                    output_mean = torch.clamp(output_mean, min=1e-5, max=1 - 1e-5)
-                    log_bernoulli = data_batch * torch.log(output_mean) + (1 - data_batch) * torch.log(1 - output_mean)
-                    R_loss = - torch.sum(log_bernoulli, dim=1)
-
+                KL_loss, output_mean, output_sigma, z_prior, latent_mean, latent_sigma = self.calculate_KL_loss(chi_zero)
+                R_loss = self.calculate_RE_loss(self.dataset_name, chi_zero, output_sigma, output_mean)
 
                 ## Overall loss considering both image reconstruction and respect to prior z
                 loss = R_loss + KL_coef * KL_loss
-                ##############################################################
 
                 ## Applying the logsumexp trick to avoid NANs in the overall loss computation.
                 ## That is, we take into account all the overall losses considering both image reconstruction and respect to prior, for all 5000 samples.
                 ## I describe the trick here: https://drive.google.com/drive/folders/1Cow0dU31nWNzeO8e1aMn3szpg_DIhMfH?usp=sharing
-                # Author: Georgios
-                # -------------------------------------------------
                 losses.append(-loss.cpu().data.numpy())
 
             losses = np.asarray(losses)
