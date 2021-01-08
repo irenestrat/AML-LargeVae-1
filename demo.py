@@ -15,18 +15,39 @@ args = SimpleNamespace(data_split=[0.7, 0.15, 0.15],
                        early_stop_epoch=30,
                        lr=5*1e-4,
                        latent_length=40,
-                       data_path='datasets/Freyfaces/freyfaces.pkl',
-                       model_path='standard_Freyfaces/',
-                       # data_path='datasets/MNIST/',
-                       # model_path='standard_MNIST/',
+                       dataset_name="Freyfaces", #default
+                       #dataset_name="d-MNIST",
+                       num_of_pseudoinputs=500,
                        use_gpu=torch.cuda.is_available())
 
+## Obtaining the appropriate paths for the data and the model.
+## Then setting the mean and variance for the pseudoinputs with respect to the dataset.
+## Here our approach follows the one adapted by the VampPrior paper when pseudoinputs are not associated (via random choice) to original data.
+## Values stolen from VampPrior github. https://github.com/jmtomczak/vae_vampprior/blob/master/utils/load_data.py
+# Author: Georgios
+# --------------------------------------
+if args.dataset_name == 'Freyfaces':
+    args.data_path='datasets/Freyfaces/freyfaces.pkl'
+    args.model_path='standard_Freyfaces/'
+    args.mean_pseudoinputs = 0.5       # mean of the pseudoinputs for frayfaces
+    args.var_pseudoinputs = 0.0004     # variance of the pseudoinputs for frayfaces
+elif args.dataset_name == 'd-MNIST':   # We refer to the dynamic MNIST as "d-MNIST" for simplicity
+    args.data_path='datasets/MNIST/'
+    args.model_path='standard_MNIST/'
+    args.mean_pseudoinputs = 0.05      # mean of the pseudoinputs for MNIST
+    args.var_pseudoinputs = 0.000001   # variance of the pseudoinputs for MNIST
+else:
+    print("Wrong name of the dataset!")
+# --------------------------------------
 
+# author: Irene-Georgios-Ioannis Pair-Programming
 ## setting seeds
 set_seeds(0)
 
 ## loading dataset
 dataset, args.output_shape, args.dataset_name = load_dataset(args.data_path)
+# print(args.output_shape)
+# print(np.prod(args.output_shape))
 
 ## shuffle data
 idx = np.arange(dataset.shape[0])

@@ -340,9 +340,17 @@ class VAE(nn.Module):
             ### call log-likelihood
 
         return loss_all, R_loss_all, KL_loss_all
+    
+    def create_pseudoinputs(self, num_of_pseudoinputs=500):
+        nonlinearity = nn.Hardtanh(min_val=0.0)
+
+        means = NonLinear(num_of_pseudoinputs, np.prod(self.args.input_size), bias=False, activation=nonlinearity)
 
     def calculate_likelihood(self, test_loader, numOfSamples=5000, MiniBatchSize=100, KL_coef=1):
-        # author: Georgios
+        # Calculating the likelidood in test time.
+        # Parts of this function were filled in by Ioannis to associate this code part with his function val_model.
+        # Primary author: Georgios
+        # ---------------------------------------------
         self.eval()
 
         testData = []
@@ -396,8 +404,13 @@ class VAE(nn.Module):
                 ## Overall loss considering both image reconstruction and respect to prior z
                 loss = R_loss + KL_coef * KL_loss
                 ##############################################################
-                losses.append(-loss.cpu().data.numpy())
 
+                ## Applying the logsumexp trick to avoid NANs in the overall loss computation.
+                ## That is, we take into account all the overall losses considering both image reconstruction and respect to prior, for all 5000 samples.
+                ## I describe the trick here: https://drive.google.com/drive/folders/1Cow0dU31nWNzeO8e1aMn3szpg_DIhMfH?usp=sharing
+                # Author: Georgios
+                # -------------------------------------------------
+                losses.append(-loss.cpu().data.numpy())
 
             losses = np.asarray(losses)
             redim = losses.shape[0] * losses.shape[1]
@@ -412,6 +425,6 @@ class VAE(nn.Module):
 
             likelihood_test[datapoint] = logsumexp - np.log(redim)
 
-            ### plotting and why--george
+            ### plotting --george
 
         return -np.mean(likelihood_test)
