@@ -10,7 +10,7 @@ import os
 args = SimpleNamespace(data_split=[0.7, 0.15, 0.15],
                        batch_size=100,
                        shuffle=True,
-                       epochs=3,
+                       epochs=10,
                        warm_up_epoch=100,
                        early_stop_epoch=30,
                        lr=5*1e-4,
@@ -18,7 +18,7 @@ args = SimpleNamespace(data_split=[0.7, 0.15, 0.15],
                        dataset_name="Freyfaces", #default
                        #dataset_name="d-MNIST",
                        model_name="VampPrior", #default
-                       #model_name="Gaussian",
+                       #model_name="standard",
                        num_of_pseudoinputs=500,
                        use_gpu=torch.cuda.is_available(),
                        use_training_data_init=False)
@@ -31,7 +31,7 @@ args = SimpleNamespace(data_split=[0.7, 0.15, 0.15],
 # --------------------------------------
 if args.dataset_name == 'Freyfaces':
     args.data_path='datasets/Freyfaces/freyfaces.pkl'
-    args.model_path='standard_Freyfaces/'
+    args.model_path=args.model_name + '_Freyfaces/'
     if(not(args.use_training_data_init)):
         args.mean_pseudoinputs = 0.5       # mean of the pseudoinputs for frayfaces
         args.var_pseudoinputs = 0.0004     # variance of the pseudoinputs for frayfaces
@@ -39,7 +39,7 @@ if args.dataset_name == 'Freyfaces':
         print("TODO") #TODO
 elif args.dataset_name == 'd-MNIST':   # We refer to the dynamic MNIST as "d-MNIST" for simplicity
     args.data_path='datasets/MNIST/'
-    args.model_path='standard_MNIST/'
+    args.model_path=args.model_name + '_MNIST/'
     if(not(args.use_training_data_init)):
         args.mean_pseudoinputs = 0.05      # mean of the pseudoinputs for MNIST
         args.var_pseudoinputs = 0.000001   # variance of the pseudoinputs for MNIST
@@ -55,8 +55,6 @@ set_seeds(0)
 
 ## loading dataset
 dataset, args.output_shape, args.dataset_name = load_dataset(args.data_path)
-# print(args.output_shape)
-# print(np.prod(args.output_shape))
 
 ## shuffle data
 idx = np.arange(dataset.shape[0])
@@ -64,6 +62,33 @@ np.random.shuffle(idx)
 
 ## construct train/val/test dataloaders
 N = dataset.shape[0] ## length of dataset
+
+def histogramImage(dataset , bins):
+    # Author: Irene
+    # Investigate the dataset by creating histograms.
+    fig = plt.figure()
+
+    # for all images
+    totalImages = dataset.shape[0]
+    # uncomment for plotting all images
+    # for i in range(0, totalImages):
+    #     image = np.array(dataset[i])
+    #     plt.hist(image, bins=bins, color='red', alpha=0.5)
+
+    # uncomment for plotting each image separately
+    image = np.array(dataset[3])
+    plt.hist(image, bins=bins, color='red', alpha=0.5)
+
+    plt.xlabel('Pixel Values')
+    plt.ylabel('Number of pixels')
+    # plt.legend(['Total', 'Red_Channel', 'Green_Channel', 'Blue_Channel'])
+
+    plt.savefig('plot.png', dpi=300, bbox_inches='tight')
+    plt.show()
+    plt.close(fig)
+
+
+# histogramImage(dataset, bins=100)
 
 # indices
 train_idx = idx[:int(args.data_split[0]*N)]
