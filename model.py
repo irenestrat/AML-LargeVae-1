@@ -144,7 +144,8 @@ class VAE(nn.Module):
             eps = torch.normal(0, 1, size=std.size())
 
         ## reparameterization trick
-        # We followed the intuition described in this blog post: https://towardsdatascience.com/understanding-variational-autoencoders-vaes-f70510919f73
+        # We followed the intuition described in this blog post:
+        # https://towardsdatascience.com/understanding-variational-autoencoders-vaes-f70510919f73
         z_prior = eps * std + latent_mean 
 
 
@@ -180,6 +181,25 @@ class VAE(nn.Module):
         plt.savefig(save_path)
         plt.close()
         return output_means
+
+    def generate_vamp_prior(self, num_of_generations, use_gpu):
+        # Author: Irene-Georgios Pair-Programming
+        gen_means = self.means(self.identity_mat)[0:num_of_generations]
+        latent_sam_gen_mean, latent_sam_gen_logvar = self.encoder(gen_means)
+        std = torch.exp(1/2 * latent_sam_gen_logvar)
+        if use_gpu:
+            eps = torch.normal(0, 1, size=std.size()).cuda()
+        else:
+            eps = torch.normal(0, 1, size=std.size())
+
+        ## Reparameterization trick
+        # We followed the intuition described in this blog post:
+        # https://towardsdatascience.com/understanding-variational-autoencoders-vaes-f70510919f73
+        z_sample_rand = eps * std + latent_sam_gen_mean
+
+        # Decoding
+        samples_gen_mean, _ = self.decoder(z_sample_rand)
+        return samples_gen_mean
 
     def plot_loss(self, train_loss_history, val_loss_history, test_loss_history, figure_name):
         # author: Ioannis

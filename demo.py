@@ -18,7 +18,7 @@ args = SimpleNamespace(data_split=[0.7, 0.15, 0.15],
                        dataset_name="Freyfaces", #default
                        #dataset_name="d-MNIST",
                        model_name="VampPrior", #default
-                       #model_name="standard",
+                       #model_name="standard", "VampPrior"
                        num_of_pseudoinputs=500,
                        use_gpu=torch.cuda.is_available(),
                        use_training_data_init=False)
@@ -90,6 +90,7 @@ def histogramImage(dataset , bins):
 
 # histogramImage(dataset, bins=100)
 
+# Author: Irene-George-Ioannis Pair Coding
 # indices
 train_idx = idx[:int(args.data_split[0]*N)]
 val_idx = idx[int(args.data_split[0]*N):N-int(args.data_split[2]*N)]
@@ -159,9 +160,12 @@ for epoch in range(args.epochs):
 
     ### testing
     test_loss, test_R_loss, test_KL_loss = vae.val_model(epoch, test_loader, test_mode=True)
-
     ### generate data similar to the dataset
-    vae.generate(epoch, 12, args.use_gpu)
+    num_of_generations = 12
+    if args.model_name == 'standard':
+        vae.generate(epoch, num_of_generations, args.use_gpu)
+    elif args.model_name=="VampPrior":
+        vae.generate_vamp_prior(num_of_generations, args.use_gpu)
 
     ## storing loss per epoch
     train_loss_history.append(train_loss)
