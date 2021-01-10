@@ -4,7 +4,7 @@ AML-LargeVae TODO:
 
 # VampPrior 
 
-will be done by tomorrow :)
+minor enhancements left :)
 
 # MoG
 
