@@ -90,8 +90,8 @@ class AdamNormGrad(Optimizer):
 
 def he_init(m):
     # author: Tomczak (stolen)
-    s = np.sqrt(2. / m.in_features)
-    m.weight.data.normal_(0, s)
+   s = np.sqrt(2. / m.in_features)
+   m.weight.data.normal_(0, s)
 
 def set_seeds(seed):
     # author: Ioannis

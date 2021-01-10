@@ -16,9 +16,9 @@ args = SimpleNamespace(data_split=[0.7, 0.15, 0.15],
                        lr=5*1e-4,
                        latent_length=40,
                        dataset_name="Freyfaces", #default
-                       #dataset_name="d-MNIST",
+                    #    dataset_name="d-MNIST",
                        model_name="VampPrior", #default
-                       #model_name="standard", "VampPrior"
+                    #    model_name="standard",
                        num_of_pseudoinputs=500,
                        use_gpu=torch.cuda.is_available(),
                        use_training_data_init=False)
@@ -90,7 +90,7 @@ def histogramImage(dataset , bins):
 
 # histogramImage(dataset, bins=100)
 
-# Author: Irene-George-Ioannis Pair Coding
+# Author: Irene-Georgios-Ioannis Pair-Programming
 # indices
 train_idx = idx[:int(args.data_split[0]*N)]
 val_idx = idx[int(args.data_split[0]*N):N-int(args.data_split[2]*N)]
@@ -215,4 +215,6 @@ vae.plot_loss(train_KL_loss_history, val_KL_loss_history, test_KL_loss_history, 
 
 
 ## calculate likelihoods for tests when done
-vae.calculate_likelihood(test_loader)
+set_seeds(0)
+likelihood = vae.calculate_likelihood(test_loader)
+print("Likelihood of the model: ", likelihood)
