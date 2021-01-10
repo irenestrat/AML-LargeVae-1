@@ -3,8 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import he_init
-from utils import set_seeds
+from utils import he_init, set_seeds
 import math
 
 from torch.autograd import Variable
@@ -165,6 +164,12 @@ class VAE(nn.Module):
         output_means, _ = self.decoder(z_priors)
 
         ## plotting outputs
+        self.plotting_outputs(output_means, epoch, N)
+        return output_means
+    
+    def plotting_outputs(self, output_means, epoch, N):
+        ## Author: Ioannis
+        ## plotting outputs
         fig = plt.figure()
         columns = 4
         rows = int(N / 4)
@@ -180,9 +185,8 @@ class VAE(nn.Module):
         save_path = self.model_path + 'generate_' + str(epoch) + '.png'
         plt.savefig(save_path)
         plt.close()
-        return output_means
 
-    def generate_vamp_prior(self, num_of_generations, use_gpu):
+    def generate_vamp_prior(self, epoch, num_of_generations, use_gpu):
         # Author: Irene-Georgios Pair-Programming
         gen_means = self.means(self.identity_mat)[0:num_of_generations]
         latent_sam_gen_mean, latent_sam_gen_logvar = self.encoder(gen_means)
@@ -199,6 +203,7 @@ class VAE(nn.Module):
 
         # Decoding
         samples_gen_mean, _ = self.decoder(z_sample_rand)
+        self.plotting_outputs(samples_gen_mean, epoch, num_of_generations)
         return samples_gen_mean
 
     def plot_loss(self, train_loss_history, val_loss_history, test_loss_history, figure_name):
@@ -422,6 +427,7 @@ class VAE(nn.Module):
         # Author: Irene-Georgios Pair-Programming
         # Computing a trainable non-linear layer for the pseudoinputs.
         # image_size stands for the data dimensions, i.e. [28, 20] for FrayFaces, [28, 28] for d-MNIST
+        # set_seeds(0)
         self.means = NonLinearSimplified(self.num_of_pseudoinputs, np.prod(self.image_size), bias=False, activation=nn.Hardtanh(min_val=0.0))
 
         # init pseudo-inputs
@@ -473,7 +479,7 @@ class VAE(nn.Module):
 
         return R_loss
 
-    def calculate_likelihood(self, test_loader, numOfSamples=5000, MiniBatchSize=100, KL_coef=1):
+    def calculate_likelihood(self, test_loader, directory='likelihood_', mode="test", numOfSamples=5000, MiniBatchSize=100, KL_coef=1):
         # Calculating the likelidood in test time.
         # Author: Georgios
         # ---------------------------------------------
@@ -523,6 +529,16 @@ class VAE(nn.Module):
 
             likelihood_test[datapoint] = logsumexp - np.log(redim)
 
-            ### plotting --george
+        # the histogram of the data
+        fig = plt.figure()
+        directory = self.model_path + directory
+        n, bins, patches = plt.hist(-likelihood_test, 100, density=True, facecolor='blue', alpha=0.5)
+
+        plt.xlabel('Log-likelihood value')
+        plt.ylabel('Probability')
+        plt.grid(True)
+
+        plt.savefig(directory + 'histogram_' + mode + '.png', bbox_inches='tight')
+        plt.close(fig)
 
         return -np.mean(likelihood_test)

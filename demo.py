@@ -10,7 +10,7 @@ import os
 args = SimpleNamespace(data_split=[0.7, 0.15, 0.15],
                        batch_size=100,
                        shuffle=True,
-                       epochs=10,
+                       epochs=50,
                        warm_up_epoch=100,
                        early_stop_epoch=30,
                        lr=5*1e-4,
@@ -165,7 +165,7 @@ for epoch in range(args.epochs):
     if args.model_name == 'standard':
         vae.generate(epoch, num_of_generations, args.use_gpu)
     elif args.model_name=="VampPrior":
-        vae.generate_vamp_prior(num_of_generations, args.use_gpu)
+        vae.generate_vamp_prior(epoch, num_of_generations, args.use_gpu)
 
     ## storing loss per epoch
     train_loss_history.append(train_loss)
@@ -215,6 +215,6 @@ vae.plot_loss(train_KL_loss_history, val_KL_loss_history, test_KL_loss_history, 
 
 
 ## calculate likelihoods for tests when done
-set_seeds(0)
+# set_seeds(0)
 likelihood = vae.calculate_likelihood(test_loader)
 print("Likelihood of the model: ", likelihood)

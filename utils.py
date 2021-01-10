@@ -11,9 +11,7 @@ class AdamNormGrad(Optimizer):
     # author: Tomczak (stolen)
     #  A variation of classical Adam optimizer that normalizes the gradients // Code stolen from jmtomczak
     """Implements Adam algorithm.
-
     It has been proposed in `Adam: A Method for Stochastic Optimization`_.
-
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
             parameter groups
@@ -23,7 +21,6 @@ class AdamNormGrad(Optimizer):
         eps (float, optional): term added to the denominator to improve
             numerical stability (default: 1e-8)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
-
     .. _Adam\: A Method for Stochastic Optimization:
         https://arxiv.org/abs/1412.6980
     """
@@ -36,7 +33,6 @@ class AdamNormGrad(Optimizer):
 
     def step(self, closure=None):
         """Performs a single optimization step.
-
         Arguments:
             closure (callable, optional): A closure that reevaluates the model
                 and returns the loss.
@@ -90,8 +86,8 @@ class AdamNormGrad(Optimizer):
 
 def he_init(m):
     # author: Tomczak (stolen)
-   s = np.sqrt(2. / m.in_features)
-   m.weight.data.normal_(0, s)
+    s = np.sqrt(2. / m.in_features)
+    m.weight.data.normal_(0, s)
 
 def set_seeds(seed):
     # author: Ioannis
