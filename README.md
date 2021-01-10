@@ -4,9 +4,11 @@ AML-LargeVae TODO:
 
 # VampPrior 
 
-minor enhancements left :)
+Done. Tests remaining + MNIST.
 
 # MoG
+
+Check for bugs.
 
 # Experiments
 
