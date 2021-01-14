@@ -58,11 +58,10 @@ class VAE(nn.Module):
             self.create_pseudoinputs() ## initializing pseudoinputs
 
 
-
         # weights initialization similar to how the VampPrior paper does it
-        # for m in self.modules():
-        #     if isinstance(m, nn.Linear):
-        #         he_init(m)
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                he_init(m)
 
     def compute_VampPrior(self, latent_representation):
         # Author: Irene-Georgios Pair-Programming

@@ -8,17 +8,17 @@ import os
 
 # author: Irene-Georgios-Ioannis Pair-Programming
 args = SimpleNamespace(data_split=[0.7964376590330788, 0.10178117048346058,0.10178117048346058],
-                       batch_size=100,
-                       shuffle=True,
-                       epochs=1,
+                       batch_size=200,
+                       shuffle=False,
+                       epochs=500,
                        warm_up_epoch=100,
                        early_stop_epoch=30,
                        lr=5*1e-4,
                        latent_length=40,
-                       # data_path='datasets/Freyfaces/freyfaces.pkl',
-                       # model_path='standard_Freyfaces/',
-                       data_path='datasets/MNIST/',
-                       model_path='standard_MNIST/',
+                       data_path='datasets/Freyfaces/freyfaces.pkl',
+                       model_path='standard_Freyfaces/',
+                       # data_path='datasets/MNIST/',
+                       # model_path='standard_MNIST/',
                        use_gpu=torch.cuda.is_available(),
                        ## Vampprior
                        vampprior=True,
@@ -154,6 +154,7 @@ for epoch in range(args.epochs):
                                                                            train_loss, train_R_loss, train_KL_loss,
                                                                            val_loss, val_R_loss, val_KL_loss,
                                                                            test_loss, test_R_loss, test_KL_loss))
+    print("")
 
 
 ## plotting losses
@@ -163,4 +164,4 @@ vae.plot_loss(train_KL_loss_history, val_KL_loss_history, test_KL_loss_history, 
 
 
 ## calculate likelihoods for tests when done
-vae.calculate_likelihood(test_loader)
+print(vae.calculate_likelihood(test_loader))
