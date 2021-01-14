@@ -146,3 +146,6 @@ def load_dataset(args):
         args.dataset_name = args.data_path.split("/")[1]
 
     return data
+
+def average_bit_per_d(ll):
+    print("")

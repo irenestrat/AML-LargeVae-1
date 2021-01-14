@@ -7,21 +7,21 @@ from model_Vamp import VAE
 import os
 
 # author: Irene-Georgios-Ioannis Pair-Programming
-args = SimpleNamespace(data_split=[0.7964376590330788, 0.10178117048346058,0.10178117048346058],
-                       batch_size=200,
+args = SimpleNamespace(data_split=[0.80, 0.10, 0.001],
+                       batch_size=100,
                        shuffle=False,
-                       epochs=500,
+                       epochs=2,
                        warm_up_epoch=100,
                        early_stop_epoch=30,
                        lr=5*1e-4,
                        latent_length=40,
-                       data_path='datasets/Freyfaces/freyfaces.pkl',
-                       model_path='standard_Freyfaces/',
-                       # data_path='datasets/MNIST/',
-                       # model_path='standard_MNIST/',
+                       # data_path='datasets/Freyfaces/freyfaces.pkl',
+                       # model_path='standard_Freyfaces/',
+                       data_path='datasets/MNIST/',
+                       model_path='standard_MNIST/',
                        use_gpu=torch.cuda.is_available(),
                        ## Vampprior
-                       vampprior=True,
+                       vampprior=False,
                        num_of_pseudoinputs=500,
                        use_training_data_init=False
                        )
@@ -88,6 +88,7 @@ test_KL_loss_history = []
 best_val_loss = np.inf
 early_stop_val_loss = np.inf
 early_stop_counter = 0
+best_model=0
 
 ### creating model folder
 if not os.path.exists(args.model_path):
@@ -132,6 +133,7 @@ for epoch in range(args.epochs):
     if val_loss_history[-1] < best_val_loss:
         best_val_loss = val_loss_history[-1]
         torch.save(vae.state_dict(), args.model_path + "/best_model.pth")
+        best_model = epoch
         print("Saving best model found at epoch:", epoch+1)
 
     ## early stopping
@@ -163,5 +165,12 @@ vae.plot_loss(train_R_loss_history, val_R_loss_history, test_R_loss_history, "Re
 vae.plot_loss(train_KL_loss_history, val_KL_loss_history, test_KL_loss_history, "KL Loss")
 
 
+## loading best model
+vae.load_state_dict(torch.load(args.model_path + "/best_model.pth"))
+
 ## calculate likelihoods for tests when done
-print(vae.calculate_likelihood(test_loader))
+vae.calculate_likelihood(test_loader, args.data_path.split("/")[1], args.output_shape)
+
+print("Best-model Training Loss", train_loss_history[best_model])
+print("Best-model Validation Loss", val_loss_history[best_model])
+print("Best-model Training Loss", test_loss_history[best_model])

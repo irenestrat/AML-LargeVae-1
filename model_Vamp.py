@@ -63,6 +63,7 @@ class VAE(nn.Module):
             if isinstance(m, nn.Linear):
                 he_init(m)
 
+
     def compute_VampPrior(self, latent_representation):
         # Author: Irene-Georgios Pair-Programming
 
@@ -481,7 +482,7 @@ class VAE(nn.Module):
 
         return R_loss
 
-    def calculate_likelihood(self, test_loader, directory='likelihood_', mode="test", numOfSamples=5000, MiniBatchSize=100, KL_coef=1):
+    def calculate_likelihood(self, test_loader, dataset, output_shape, directory='likelihood_', mode="test", numOfSamples=5000, MiniBatchSize=100, KL_coef=1):
         # Calculating the likelidood in test time.
         # Author: Georgios
         # ---------------------------------------------
@@ -543,7 +544,12 @@ class VAE(nn.Module):
         plt.savefig(directory + 'histogram_' + mode + '.png', bbox_inches='tight')
         plt.close(fig)
 
-        return -np.mean(likelihood_test)
+        if dataset == "MNIST":
+            print("Best-model Test likelihood", -np.mean(likelihood_test))
+        else:
+            print("Best-model Test likelihood", -(np.mean(likelihood_test)/np.prod(output_shape)) / np.log(2))
+        return
+
 
 
     # def calculate_likelihood(self, test_loader, numOfSamples=5000, MiniBatchSize=100, KL_coef=1):
