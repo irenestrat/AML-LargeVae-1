@@ -3,49 +3,37 @@ from torch import nn
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import he_init, set_seeds
+from utils import he_init
 import math
-
-from torch.autograd import Variable
-
-## Non-linear layers
-# Slightly modified code from the VampPrior Github; always using an activation function for the layers.
-# Also refer to: https://github.com/jmtomczak/vae_vampprior/blob/master/utils/nn.py
-class NonLinearSimplified(nn.Module):
-    def __init__(self, input_size, output_size, activation, bias=True):
-        super(NonLinearSimplified, self).__init__()
-        self.activation = activation
-        self.linear = nn.Linear(int(input_size), int(output_size), bias=bias)
-
-    def forward(self, x):
-        return self.activation( self.linear(x) )
 
 class VAE(nn.Module):
 
-    def __init__(self, use_gpu, model_path, data_shape, latent_length, dataset_name, model_name, num_of_pseudoinputs, output_shape, use_training_data_init, mean_pseudoinputs, var_pseudoinputs):
+    def __init__(self,args):
         # author: Irene-Georgios-Ioannis Pair-Programming
 
         super(VAE, self).__init__()
 
-        self.data_shape = data_shape
-        self.dataset_name = dataset_name
-        self.latent_length = latent_length
-        self.model_path = model_path
-        self.model_name = model_name
-        self.num_of_pseudoinputs = num_of_pseudoinputs
-        self.image_size = output_shape
-        self.use_training_data_init = use_training_data_init
-        self.mean_pseudoinputs = mean_pseudoinputs
-        self.var_pseudoinputs = var_pseudoinputs
-        self.use_gpu = use_gpu
+
+        ## output_shape=
+        self.data_shape = args.output_shape
+        self.dataset_name = args.dataset_name
+        self.latent_length = args.latent_length
+        self.model_path = args.model_path
+        self.use_gpu = args.use_gpu
+        self.use_training_data_init = args.use_training_data_init
+        self.vampprior = args.vampprior
+
+        ## vampprior
+        if self.vampprior:
+            self.num_of_pseudoinputs = args.num_of_pseudoinputs
+            self.mean_pseudoinputs = args.mean_pseudoinputs
+            self.var_pseudoinputs = args.var_pseudoinputs
 
         ## encoder
         self.sigmoid = nn.Sigmoid()
-
         ## Gated_0 layer
-        self.encoder_h_0 = nn.Linear(np.prod(data_shape), 300)
-        self.encoder_gate_0 = nn.Linear(np.prod(data_shape), 300)
-
+        self.encoder_h_0 = nn.Linear(np.prod(self.data_shape), 300)
+        self.encoder_gate_0 = nn.Linear(np.prod(self.data_shape), 300)
         ## Gated_1 layer
         self.encoder_h_1 = nn.Linear(300, 300)
         self.encoder_gate_1 = nn.Linear(300, 300)
@@ -56,24 +44,74 @@ class VAE(nn.Module):
 
         ## decoder
         ## Gated_0 layer
-        self.decoder_h_0 = nn.Linear(latent_length, 300)
-        self.decoder_gate_0 = nn.Linear(latent_length, 300)
-
+        self.decoder_h_0 = nn.Linear(self.latent_length, 300)
+        self.decoder_gate_0 = nn.Linear(self.latent_length, 300)
         ## Gated_1 layer
         self.decoder_h_1 = nn.Linear(300, 300)
         self.decoder_gate_1 = nn.Linear(300, 300)
 
-        self.decoder_output_mean = nn.Linear(300, np.prod(data_shape))
-        self.decoder_output_sigma = nn.Linear(300, np.prod(data_shape))
+        self.decoder_output_mean = nn.Linear(300, np.prod(self.data_shape))
+        self.decoder_output_sigma = nn.Linear(300, np.prod(self.data_shape))
         self.decoder_sigma_act = nn.Hardtanh(-4.5, 0) ## why?
+
+        if self.vampprior:
+            self.create_pseudoinputs() ## initializing pseudoinputs
+
 
         # weights initialization similar to how the VampPrior paper does it
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 he_init(m)
-        
-        if(self.model_name == "VampPrior"):
-            self.create_pseudoinputs()
+
+
+    def compute_VampPrior(self, latent_representation):
+        # Author: Irene-Georgios Pair-Programming
+
+        # calculate the pseudoinputs means
+        pseudoinput_means = self.means(self.identity_mat)
+        pseudoinput_means = self.means_act(pseudoinput_means)
+
+
+        # calculate the latent representation for those given data (means)
+        z_p_mean, z_p_log_var = self.encoder(pseudoinput_means)
+
+        # expand the latent representations
+        z_expand = latent_representation.unsqueeze(1)
+        z_p_means = z_p_mean.unsqueeze(0)
+        z_p_logvars = z_p_log_var.unsqueeze(0)
+
+        a = torch.sum(-0.5 * (z_p_logvars + torch.pow(z_expand - z_p_means, 2) / torch.exp(z_p_logvars)), 2) - math.log(self.num_of_pseudoinputs)
+
+
+        ## Applying the logsumexp trick to avoid NANs in the sum computation.S
+        # I describe the trick here: https://drive.google.com/drive/folders/1Cow0dU31nWNzeO8e1aMn3szpg_DIhMfH?usp=sharing
+        log_prior = torch.max(a, 1)[0] + torch.log(
+            torch.sum(torch.exp(a - (torch.max(a, 1)[0]).unsqueeze(1)), 1))  # MB x 1
+
+        return log_prior
+
+    def create_pseudoinputs(self):
+        # Author: Irene-Georgios Pair-Programming
+        # Computing a trainable non-linear layer for the pseudoinputs.
+
+        # data_shape stands for the data dimensions, i.e. [28, 20] for FrayFaces, [28, 28] for d-MNIST
+        self.means_act = nn.Hardtanh(min_val=0.0)
+        self.means = nn.Linear(int(self.num_of_pseudoinputs),  int(np.prod(self.data_shape)), bias=False)
+
+
+        # init pseudo-inputs
+        if self.use_training_data_init:
+            self.means.weight.data = self.mean_pseudoinputs  # TODO: check
+        else:
+            self.means.weight.data.normal_(self.mean_pseudoinputs, np.sqrt(self.var_pseudoinputs))
+
+        # create an idle input for calling pseudo-inputs
+        # self.identity_mat = Variable(torch.eye(self.num_of_pseudoinputs, self.num_of_pseudoinputs), requires_grad=False)
+        self.identity_mat = torch.eye(self.num_of_pseudoinputs, self.num_of_pseudoinputs).detach()
+
+        if self.use_gpu:
+            self.identity_mat = self.identity_mat.cuda()
+
 
     def encoder(self, x):
         # author: Irene-Georgios-Ioannis Pair-Programming
@@ -114,7 +152,7 @@ class VAE(nn.Module):
 
         ## output-distributions
         output_mean = self.decoder_output_mean(x)
-        output_mean = self.sigmoid(output_mean) ## 0-1 scale
+        output_mean = self.sigmoid(output_mean) ## 0-1 scale (why not softmax)??
 
         ## clamping for FreyFaces ##
         if self.dataset_name == "Freyfaces":
@@ -141,11 +179,7 @@ class VAE(nn.Module):
             eps = torch.normal(0, 1, size=std.size()).cuda()
         else:
             eps = torch.normal(0, 1, size=std.size())
-
-        ## reparameterization trick
-        # We followed the intuition described in this blog post:
-        # https://towardsdatascience.com/understanding-variational-autoencoders-vaes-f70510919f73
-        z_prior = eps * std + latent_mean 
+        z_prior = eps * std + latent_mean  ## reparameterization trick
 
 
         ## decoding
@@ -166,7 +200,7 @@ class VAE(nn.Module):
         ## plotting outputs
         self.plotting_outputs(output_means, epoch, N)
         return output_means
-    
+
     def plotting_outputs(self, output_means, epoch, N):
         ## Author: Ioannis
         ## plotting outputs
@@ -190,7 +224,7 @@ class VAE(nn.Module):
         # Author: Irene-Georgios Pair-Programming
         gen_means = self.means(self.identity_mat)[0:num_of_generations]
         latent_sam_gen_mean, latent_sam_gen_logvar = self.encoder(gen_means)
-        std = torch.exp(1/2 * latent_sam_gen_logvar)
+        std = torch.exp(1 / 2 * latent_sam_gen_logvar)
         if use_gpu:
             eps = torch.normal(0, 1, size=std.size()).cuda()
         else:
@@ -221,27 +255,7 @@ class VAE(nn.Module):
         plt.legend()
         plt.savefig(self.model_path+figure_name+".png")
         plt.close()
-    
-    def compute_VampPrior(self, latent_representation):
-        # Author: Irene-Georgios Pair-Programming
-        
-        # calculate the pseudoinputs means
-        pseudoinput_means = self.means(self.identity_mat)
 
-        # calculate the latent representation for those given data (means)
-        z_p_mean, z_p_log_var = self.encoder(pseudoinput_means)
-
-        # expand the latent representations
-        z_expand = latent_representation.unsqueeze(1)
-        z_p_means = z_p_mean.unsqueeze(0)
-        z_p_logvars = z_p_log_var.unsqueeze(0)
-
-        a = torch.sum(-0.5 * (z_p_logvars + torch.pow(z_expand - z_p_means, 2) / torch.exp(z_p_logvars)), 2) - math.log(self.num_of_pseudoinputs)
-
-        # calculate log-sum-exp
-        log_prior = torch.max(a, 1)[0] + torch.log(torch.sum(torch.exp(a - (torch.max(a, 1)[0]).unsqueeze(1)), 1))  # MB x 1
-
-        return log_prior
 
     def train_model(self, data_loader, optimizer, KL_coef=1):
         # author: Ioannis
@@ -252,7 +266,9 @@ class VAE(nn.Module):
         R_loss_all = 0
         KL_loss_all = 0
 
+
         for index, data_batch in enumerate(data_loader):
+
             ## vizualize input
             # plt.imshow(data_batch.data.cpu().numpy()[0].reshape(28,20))
             # plt.show()
@@ -260,10 +276,11 @@ class VAE(nn.Module):
             output_mean, output_sigma, z_prior, latent_mean, latent_sigma = self.forward(data_batch)
             ### computing ELBO-loss
             ## KL divergence
-            if(self.model_name == "standard"):
-                log_z_prior = torch.sum(-0.5 * torch.pow(z_prior, 2), 1) ## loglikelihood of z_prior being generated by (0,1) Normal Distribution ## summing over the
-            else:
+            if self.vampprior:
                 log_z_prior = self.compute_VampPrior(z_prior)
+            else:
+                log_z_prior = torch.sum(-0.5 * torch.pow(z_prior, 2), 1) ## loglikelihood of z_prior being generated by (0,1) Normal Distribution ## summing over the
+
 
             log_q_z = torch.sum(-0.5 * (latent_sigma + torch.pow(z_prior - latent_mean, 2) / torch.exp(latent_sigma)), 1) ## loglikelihood of z_prior being generated by
                                                                                                                           ## predicted Normal Distributions
@@ -337,24 +354,18 @@ class VAE(nn.Module):
             output_mean, output_sigma, z_prior, latent_mean, latent_sigma = self.forward(data_batch)
             ### computing ELBO-loss
             ## KL divergence
-            if(self.model_name == "standard"):
-                log_z_prior = torch.sum(-0.5 * torch.pow(z_prior, 2),
-                                    1)  ## loglikelihood of z_prior being generated by (0,1) Normal Distribution ## summing over the
-            else:
-                log_z_prior = self.compute_VampPrior(z_prior)
-
-
+            log_z_prior = torch.sum(-0.5 * torch.pow(z_prior, 2),1)  ## loglikelihood of z_prior being generated by (0,1) Normal Distribution ## summing over the
             log_q_z = torch.sum(-0.5 * (latent_sigma + torch.pow(z_prior - latent_mean, 2) / torch.exp(latent_sigma)),
                                 1)  ## loglikelihood of z_prior being generated by
             ## predicted Normal Distributions
-            KL_loss = - (log_z_prior - log_q_z)  ## KL(q||p)=Sum_over( q(z)*log[q(z)/p(z)])=Ν^(-1)Sum(log_p(z) - log_q(z))
+            KL_loss = - (log_z_prior - log_q_z)  ## KL(q||p)=Sum_over( q(z)*log[q(z)/p(z)])
 
             ### computing reconstruction loss
             ## Considering a discrete logistic distribution for FrayFace dataset (similarly to the paper)
             ## upper pixel of generated output
             if self.dataset_name == 'Freyfaces':
                 data_batch = torch.floor(data_batch * 256) / 256
-                ## applying the logistic distributions###as explained in https://medium.com/@smallfishbigsea/an-explanation-of-discretized-logistic-mixture-likelihood-bdfe531751f0
+                ## applying the logistic distributions ###as explained in https://medium.com/@smallfishbigsea/an-explanation-of-discretized-logistic-mixture-likelihood-bdfe531751f0
                 var = torch.exp(output_sigma)  ## extracting variance
                 logistic_CDF_left = 1 / (1 + torch.exp(- (data_batch - output_mean) / var))
                 logistic_CDF_right = 1 / (1 + torch.exp(- (data_batch - output_mean + 1 / 256) / var))
@@ -422,35 +433,17 @@ class VAE(nn.Module):
             ### call log-likelihood
 
         return loss_all, R_loss_all, KL_loss_all
-    
-    def create_pseudoinputs(self):
-        # Author: Irene-Georgios Pair-Programming
-        # Computing a trainable non-linear layer for the pseudoinputs.
-        # image_size stands for the data dimensions, i.e. [28, 20] for FrayFaces, [28, 28] for d-MNIST
-        # set_seeds(0)
-        self.means = NonLinearSimplified(self.num_of_pseudoinputs, np.prod(self.image_size), bias=False, activation=nn.Hardtanh(min_val=0.0))
-
-        # init pseudo-inputs
-        if self.use_training_data_init:
-            self.means.linear.weight.data = self.mean_pseudoinputs #TODO: check
-        else:
-            self.means.linear.weight.data.normal_(self.mean_pseudoinputs, np.sqrt(self.var_pseudoinputs))
-
-        # create an idle input for calling pseudo-inputs
-        self.identity_mat = Variable(torch.eye(self.num_of_pseudoinputs, self.num_of_pseudoinputs), requires_grad=False)
-        if self.use_gpu:
-            self.identity_mat = self.identity_mat.cuda()
-
     def calculate_KL_loss(self, chi_zero):
         ##############################################################
         # author: Ioannis
         output_mean, output_sigma, z_prior, latent_mean, latent_sigma = self.forward(chi_zero)
         ### computing ELBO-loss
         ## KL divergence
-        if(self.model_name == "standard"):
-            log_z_prior = torch.sum(-0.5 * torch.pow(z_prior, 2),1)  ## loglikelihood of z_prior being generated by (0,1) Normal Distribution ## summing over the
-        else:
+        if self.vampprior:
             log_z_prior = self.compute_VampPrior(z_prior)
+        else:
+            log_z_prior = torch.sum(-0.5 * torch.pow(z_prior, 2),1)  ## loglikelihood of z_prior being generated by (0,1) Normal Distribution ## summing over the
+
         log_q_z = torch.sum(-0.5 * (latent_sigma + torch.pow(z_prior - latent_mean, 2) / torch.exp(latent_sigma)),1)  ## loglikelihood of z_prior being generated by
         ## predicted Normal Distributions
         KL_loss = - (log_z_prior - log_q_z)  ## KL(q||p)=Sum_over( q(z)*log[q(z)/p(z)])
@@ -474,12 +467,12 @@ class VAE(nn.Module):
         elif self.dataset_name == 'MNIST':
             # author: Irene-Georgios-Ioannis Pair-Programming
             output_mean = torch.clamp(output_mean, min=1e-5, max=1 - 1e-5)
-            log_bernoulli = data_batch * torch.log(output_mean) + (1 - data_batch) * torch.log(1 - output_mean)
+            log_bernoulli = chi_zero * torch.log(output_mean) + (1 - chi_zero) * torch.log(1 - output_mean)
             R_loss = - torch.sum(log_bernoulli, dim=1)
 
         return R_loss
 
-    def calculate_likelihood(self, test_loader, directory='likelihood_', mode="test", numOfSamples=5000, MiniBatchSize=100, KL_coef=1):
+    def calculate_likelihood(self, test_loader, dataset, output_shape, directory='likelihood_', mode="test", numOfSamples=5000, MiniBatchSize=100, KL_coef=1):
         # Calculating the likelidood in test time.
         # Author: Georgios
         # ---------------------------------------------
@@ -541,4 +534,8 @@ class VAE(nn.Module):
         plt.savefig(directory + 'histogram_' + mode + '.png', bbox_inches='tight')
         plt.close(fig)
 
-        return -np.mean(likelihood_test)
+        if dataset == "MNIST":
+            print("Best-model Test likelihood", -np.mean(likelihood_test))
+        else:
+            print("Best-model Test likelihood", -(np.mean(likelihood_test)/np.prod(output_shape)) / np.log(2))
+        return

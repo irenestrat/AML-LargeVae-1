@@ -7,54 +7,45 @@ from model import VAE
 import os
 
 # author: Irene-Georgios-Ioannis Pair-Programming
-args = SimpleNamespace(data_split=[0.7, 0.15, 0.15],
+args = SimpleNamespace(data_split=[0.8, 0.1, 0.1],
                        batch_size=100,
                        shuffle=True,
-                       epochs=50,
+                       epochs=1000,
                        warm_up_epoch=100,
                        early_stop_epoch=30,
                        lr=5*1e-4,
                        latent_length=40,
-                       dataset_name="Freyfaces", #default
-                    #    dataset_name="d-MNIST",
+                    #    dataset_name="Freyfaces", #default
+                       dataset_name="d-MNIST",
                        model_name="VampPrior", #default
                     #    model_name="standard",
-                       num_of_pseudoinputs=500,
                        use_gpu=torch.cuda.is_available(),
-                       use_training_data_init=False)
+                       num_of_pseudoinputs=500,
+                       use_training_data_init=False
+                       )
 
-## Obtaining the appropriate paths for the data and the model.
-## Then setting the mean and variance for the pseudoinputs with respect to the dataset.
-## Here our approach follows the one adapted by the VampPrior paper when pseudoinputs are not associated (via random choice) to original data.
-## Values stolen from VampPrior github. https://github.com/jmtomczak/vae_vampprior/blob/master/utils/load_data.py
-# Author: Irene-Georgios Pair-Programming
-# --------------------------------------
 if args.dataset_name == 'Freyfaces':
     args.data_path='datasets/Freyfaces/freyfaces.pkl'
     args.model_path=args.model_name + '_Freyfaces/'
-    if(not(args.use_training_data_init)):
-        args.mean_pseudoinputs = 0.5       # mean of the pseudoinputs for frayfaces
-        args.var_pseudoinputs = 0.0004     # variance of the pseudoinputs for frayfaces
-    else:
-        print("TODO") #TODO
 elif args.dataset_name == 'd-MNIST':   # We refer to the dynamic MNIST as "d-MNIST" for simplicity
     args.data_path='datasets/MNIST/'
     args.model_path=args.model_name + '_MNIST/'
-    if(not(args.use_training_data_init)):
-        args.mean_pseudoinputs = 0.05      # mean of the pseudoinputs for MNIST
-        args.var_pseudoinputs = 0.000001   # variance of the pseudoinputs for MNIST
-    else:
-        print("TODO") #TODO
 else:
     print("Wrong name of the dataset!")
-# --------------------------------------
 
-# author: Irene-Georgios-Ioannis Pair-Programming
+if(args.model_name == "VampPrior"):
+    args.vampprior = True
+else:
+    args.vampprior = False
+
+
 ## setting seeds
 set_seeds(0)
 
 ## loading dataset
-dataset, args.output_shape, args.dataset_name = load_dataset(args.data_path)
+dataset = load_dataset(args)
+# dataset, args.output_shape, args.dataset_name = load_dataset(args.data_path)
+
 
 ## shuffle data
 idx = np.arange(dataset.shape[0])
@@ -63,34 +54,6 @@ np.random.shuffle(idx)
 ## construct train/val/test dataloaders
 N = dataset.shape[0] ## length of dataset
 
-def histogramImage(dataset , bins):
-    # Author: Irene
-    # Investigate the dataset by creating histograms.
-    fig = plt.figure()
-
-    # for all images
-    totalImages = dataset.shape[0]
-    # uncomment for plotting all images
-    # for i in range(0, totalImages):
-    #     image = np.array(dataset[i])
-    #     plt.hist(image, bins=bins, color='red', alpha=0.5)
-
-    # uncomment for plotting each image separately
-    image = np.array(dataset[3])
-    plt.hist(image, bins=bins, color='red', alpha=0.5)
-
-    plt.xlabel('Pixel Values')
-    plt.ylabel('Number of pixels')
-    # plt.legend(['Total', 'Red_Channel', 'Green_Channel', 'Blue_Channel'])
-
-    plt.savefig('plot.png', dpi=300, bbox_inches='tight')
-    plt.show()
-    plt.close(fig)
-
-
-# histogramImage(dataset, bins=100)
-
-# Author: Irene-Georgios-Ioannis Pair-Programming
 # indices
 train_idx = idx[:int(args.data_split[0]*N)]
 val_idx = idx[int(args.data_split[0]*N):N-int(args.data_split[2]*N)]
@@ -106,7 +69,7 @@ test_data = dataset[test_idx]
 test_data = torch.Tensor(test_data)
 
 
-vae = VAE(args.use_gpu, args.model_path, args.output_shape, args.latent_length, args.dataset_name, args.model_name, args.num_of_pseudoinputs, args.output_shape, args.use_training_data_init, args.mean_pseudoinputs, args.var_pseudoinputs)
+vae = VAE(args)
 if args.use_gpu:
     vae.cuda()
     train_loader = DataLoader(train_data.cuda(), batch_size=args.batch_size, shuffle=args.shuffle)
@@ -137,6 +100,7 @@ test_KL_loss_history = []
 best_val_loss = np.inf
 early_stop_val_loss = np.inf
 early_stop_counter = 0
+best_model=0
 
 ### creating model folder
 if not os.path.exists(args.model_path):
@@ -160,12 +124,9 @@ for epoch in range(args.epochs):
 
     ### testing
     test_loss, test_R_loss, test_KL_loss = vae.val_model(epoch, test_loader, test_mode=True)
+
     ### generate data similar to the dataset
-    num_of_generations = 12
-    if args.model_name == 'standard':
-        vae.generate(epoch, num_of_generations, args.use_gpu)
-    elif args.model_name=="VampPrior":
-        vae.generate_vamp_prior(epoch, num_of_generations, args.use_gpu)
+    vae.generate(epoch, 12, args.use_gpu)
 
     ## storing loss per epoch
     train_loss_history.append(train_loss)
@@ -184,6 +145,7 @@ for epoch in range(args.epochs):
     if val_loss_history[-1] < best_val_loss:
         best_val_loss = val_loss_history[-1]
         torch.save(vae.state_dict(), args.model_path + "/best_model.pth")
+        best_model = epoch
         print("Saving best model found at epoch:", epoch+1)
 
     ## early stopping
@@ -206,6 +168,7 @@ for epoch in range(args.epochs):
                                                                            train_loss, train_R_loss, train_KL_loss,
                                                                            val_loss, val_R_loss, val_KL_loss,
                                                                            test_loss, test_R_loss, test_KL_loss))
+    print("")
 
 
 ## plotting losses
@@ -214,7 +177,12 @@ vae.plot_loss(train_R_loss_history, val_R_loss_history, test_R_loss_history, "Re
 vae.plot_loss(train_KL_loss_history, val_KL_loss_history, test_KL_loss_history, "KL Loss")
 
 
+## loading best model
+vae.load_state_dict(torch.load(args.model_path + "/best_model.pth"))
+
 ## calculate likelihoods for tests when done
-# set_seeds(0)
-likelihood = vae.calculate_likelihood(test_loader)
-print("Likelihood of the model: ", likelihood)
+vae.calculate_likelihood(test_loader, args.data_path.split("/")[1], args.output_shape)
+
+print("Best-model Training Loss", train_loss_history[best_model])
+print("Best-model Validation Loss", val_loss_history[best_model])
+print("Best-model Training Loss", test_loss_history[best_model])

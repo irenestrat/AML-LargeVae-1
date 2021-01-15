@@ -98,38 +98,50 @@ def set_seeds(seed):
     torch.backends.cudnn.benchmark = False
     return
 
-def load_dataset(path):
+def load_dataset(args):
     # author: Ioannis
+    if args.data_path.split("/")[1] == "Freyfaces":
+        ##vampprior
+        if args.vampprior:
+            args.mean_pseudoinputs = 0.5
+            args.var_pseudoinputs = 1e-4
 
-    if path.split("/")[1] == "Freyfaces":
-        with open(path, 'rb') as f:
+        with open(args.data_path, 'rb') as f:
             data = pickle.load(f, encoding='latin1')[0]
 
         ## data normalization [half pixel trick] similarly to the paper implementation
         data = (data + 0.5)/256
-        output_shape = np.asarray([28, 20])
+        args.output_shape = np.asarray([28, 20])
+        args.dataset_name = args.data_path.split("/")[1]
 
-    elif path.split("/")[1] == "MNIST":
+
+    elif args.data_path.split("/")[1] == "MNIST":
+
+        ##vampprior
+        if args.vampprior:
+            args.mean_pseudoinputs = 0.05
+            args.var_pseudoinputs = 1e-6
 
         data = []
-        for file in os.listdir(path):
-            with gzip.open(path+file, "r") as f:
-                # first 4 bytes is a magic number
+        for file in os.listdir(args.data_path):
+            with gzip.open(args.data_path+file, "r") as f:
                 magic_number = int.from_bytes(f.read(4), "big")
-                # second 4 bytes is the number of images
                 image_count = int.from_bytes(f.read(4), "big")
-                # third 4 bytes is the row count
                 row_count = int.from_bytes(f.read(4), "big")
-                # fourth 4 bytes is the column count
                 column_count = int.from_bytes(f.read(4), "big")
-                # rest is the image pixel data, each pixel is stored as an unsigned byte
-                # pixel values are 0 to 255
+
                 image_data = f.read()
                 image_data = np.frombuffer(image_data, dtype=np.uint8).reshape((image_count, row_count, column_count))
                 data.append(image_data)
+
+
         data = np.concatenate([data[0], data[1]])
 
         data = data.reshape(data.shape[0], data.shape[1] * data.shape[2]) / 255
-        output_shape = np.asarray([28, 28])
+        args.output_shape = np.asarray([28, 28])
+        args.dataset_name = args.data_path.split("/")[1]
 
-    return data, output_shape, path.split("/")[1]
+    return data
+
+def average_bit_per_d(ll):
+    print("")
