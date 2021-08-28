@@ -1,18 +1,2 @@
-AML-LargeVae TODO:
+This project was implemented in the contect of the Advanced Machine Learning course (KTH) and aims at replicating the main finding of the study titled  "VAE with a VampPrior" authored by Tomczak Jakub and Max Welling.
 
-# Report
-
-# VampPrior 
-
-Done. Tests remaining + MNIST.
-
-# MoG
-
-Check for bugs.
-
-# Experiments
-
-0. experiment with slightly different NN architecture
-1. experiment with different number of latent variable s
-2. experiment with no KL loss
-3. experiment with trash sigmas 
